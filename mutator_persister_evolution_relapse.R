@@ -10,7 +10,9 @@ require(tidyverse)
 require(plyr)
 require(reshape2)
 
-#-------------------------------------------------
+#-----------------------------------------------------------------
+# NOTE that relapse simulations assume bactericidal AB treatment!
+#-----------------------------------------------------------------
 
 # relapse simulations takes in simulation data during treatment as starting points
 
@@ -95,26 +97,17 @@ transitions = list( #TRANSITIONS AFFECTING N/P:
   c(M_R = +1, M = -1),               #trans37: mutation M->M_R
   c(U = +1, M = -1, track_M_U = +1), #trans38: mutation M->U
   c(U = +1, P = -1, track_P_U = +1), #trans39: mutation P->U
-  c(U_R = +1, U = -1),               #trans40: backmutation U_R->U
-  #"BACK"
-  c(N_R = -as.integer(params["BM"]), N = +as.integer(params["BM"])), #trans41: backmutation N_R->N 
-  c(P = -as.integer(params["BM"]), N = +as.integer(params["BM"])),   #trans42: backmutation P->N
-  c(M = -as.integer(params["BM"]), N = +as.integer(params["BM"])),   #trans43: backmutation M->N
-  c(P_R = -as.integer(params["BM"]), P = +as.integer(params["BM"])), #trans44: backmutation P_R->P
-  c(M_R = -as.integer(params["BM"]), M = +as.integer(params["BM"])), #trans45: backmutation M_R->M
-  c(U = -as.integer(params["BM"]), M = +as.integer(params["BM"])),   #trans46: backmutation U->M
-  c(U = -as.integer(params["BM"]), P = +as.integer(params["BM"])),   #trans47: backmutation U->P
-  c(U_R = -as.integer(params["BM"]),U = +as.integer(params["BM"])),  #trans48: backmutation U_R->U
-  
+  c(U_R = +1, U = -1),               #trans40: mutation U_R->U
+ 
   #Resistant persister populations
-  c(N_R = -as.integer(params["Rp"]), N_R_p = +as.integer(params["Rp"])), #trans49: switching of N_R to N_R_p
-  c(N_R = +as.integer(params["Rp"]), N_R_p = -as.integer(params["Rp"])), #trans50: switching of N_R_p to N_R
-  c(P_R = -as.integer(params["Rp"]), P_R_p = +as.integer(params["Rp"])), #trans51: switching of P_R to P_R_p
-  c(P_R = +as.integer(params["Rp"]), P_R_p = -as.integer(params["Rp"])), #trans52: switching of P_p to P_R_p
-  c(M_R = -as.integer(params["Rp"]), M_R_p = +as.integer(params["Rp"])), #trans53: switching of Hm_r to M_R_p
-  c(M_R = +as.integer(params["Rp"]), M_R_p = -as.integer(params["Rp"])), #trans54: switching of Hm_r_p to M_R
-  c(U_R = -as.integer(params["Rp"]), U_R_p = +as.integer(params["Rp"])), #trans55: switching of U_R to U_R_p
-  c(U_R = +as.integer(params["Rp"]), U_R_p = -as.integer(params["Rp"]))  #trans56: switching of U_R_p to U_R
+  c(N_R = -as.integer(params["Rp"]), N_R_p = +as.integer(params["Rp"])), #trans41: switching of N_R to N_R_p
+  c(N_R = +as.integer(params["Rp"]), N_R_p = -as.integer(params["Rp"])), #trans42: switching of N_R_p to N_R
+  c(P_R = -as.integer(params["Rp"]), P_R_p = +as.integer(params["Rp"])), #trans43: switching of P_R to P_R_p
+  c(P_R = +as.integer(params["Rp"]), P_R_p = -as.integer(params["Rp"])), #trans44: switching of P_p to P_R_p
+  c(M_R = -as.integer(params["Rp"]), M_R_p = +as.integer(params["Rp"])), #trans45: switching of M_R to M_R_p
+  c(M_R = +as.integer(params["Rp"]), M_R_p = -as.integer(params["Rp"])), #trans46: switching of M_R_p to M_R
+  c(U_R = -as.integer(params["Rp"]), U_R_p = +as.integer(params["Rp"])), #trans47: switching of U_R to U_R_p
+  c(U_R = +as.integer(params["Rp"]), U_R_p = -as.integer(params["Rp"]))  #trans48: switching of U_R_p to U_R
   
 )
 
@@ -144,43 +137,43 @@ rate_function <- function(y, params, t){
           #TRANSITIONS AFFECTING N_R:
           psimax*(1-c_R)*y["N_R"],                          #trans6: growth of N_R
           eR*y["N_R"],                                      #trans7: effect of antimicrobials on N_R
-          (d+(1-c_R)*(1-p_R*BM)*psimax*(total/K))*y["N_R"], #trans8: capactiy limitation + background death
+          (d+(1-c_R)*psimax*(total/K))*y["N_R"],            #trans8: capacity limitation + background death
           
           #TRANSITIONS AFFECTING P/P_p:
           psimax*y["P"],                                    #trans9: growth of P
           h_F*s_F*y["P"],                                   #trans10: switching from P to P_p
           h_B*s_B*y["P_p"],                                 #trans11: switching from P_p to P
           eN*y["P"],                                        #trans12: effect of antimicrobials on P
-          (d+psimax*(1-p_R-p_M-p_P*BM)*(total/K))*y["P"],   #trans13: capacity limitation + background death
+          (d+psimax*(1-p_R-p_M)*(total/K))*y["P"],          #trans13: capacity limitation + background death
           
           #TRANSITIONS AFFECTING P_R:
           psimax*(1-c_R)*y["P_R"],                          #trans14: growth of P_R
           eR*y["P_R"],                                      #trans15: effect of antimicrobials on P_R
-          (d+(1-c_R)*(1-p_R*BM)*psimax*(total/K))*y["P_R"], #trans16: capacity limitation + background death
+          (d+(1-c_R)*psimax*(total/K))*y["P_R"],            #trans16: capacity limitation + background death
           
           #TRANSITIONS AFFECTING M/M_p:
-          psimax*(1-c_M)*y["M"],                                            #trans17: growth of M
-          s_F*y["M"],                                                       #trans18: switching from M to M_p
-          s_B*y["M_p"],                                                     #trans19: switching from M_p to M
-          eM*y["M"],                                                        #trans20: effect of antimicrobials on M
-          (d+(1-c_M)*(1-h_p*(p_R+p_P)-h_p*p_M*BM)*psimax*(total/K))*y["M"], #trans21: capacity limit + background death
+          psimax*(1-c_M)*y["M"],                                   #trans17: growth of M
+          s_F*y["M"],                                              #trans18: switching from M to M_p
+          s_B*y["M_p"],                                            #trans19: switching from M_p to M
+          eM*y["M"],                                               #trans20: effect of antimicrobials on M
+          (d+(1-c_M)*(1-h_p*(p_R+p_P))*psimax*(total/K))*y["M"],   #trans21: capacity limit + background death
           
           #TRANSITIONS AFFECTING M_R:
-          psimax*(1-c_R)*(1-c_M)*y["M_R"],                                  #trans22: growth of M_R
-          eM_R*y["M_R"],                                                    #trans23: effect of antimicrobials on M_R
-          (d+(1-c_R)*(1-c_M)*(1-h_p*p_R*BM)*psimax*(total/K))*y["M_R"],     #trans24: capacity limitaiton + background death
+          psimax*(1-c_R)*(1-c_M)*y["M_R"],                  #trans22: growth of M_R
+          eM_R*y["M_R"],                                    #trans23: effect of antimicrobials on M_R
+          (d+(1-c_R)*(1-c_M)*psimax*(total/K))*y["M_R"],    #trans24: capacity limitaiton + background death
           
           #TRANSITIONS AFFECTING U/U_p:
-          psimax*(1-c_M)*y["U"],                                            #trans25: growth of U
-          h_F*s_F*y["U"],                                                   #trans26: switching from U to U_p
-          h_B*s_B*y["U_p"],                                                 #trans27: switching from U_p to U
-          eM*y["U"],                                                        #trans28: effect of AM on U
-          (d+(1-c_M)*(1-h_p*(p_R-(p_M+p_P)*BM))*psimax*(total/K))*y["U"],   #trans29: capacity limitaition + background death
+          psimax*(1-c_M)*y["U"],                            #trans25: growth of U
+          h_F*s_F*y["U"],                                   #trans26: switching from U to U_p
+          h_B*s_B*y["U_p"],                                 #trans27: switching from U_p to U
+          eM*y["U"],                                        #trans28: effect of AM on U
+          (d+(1-c_M)*(1-h_p*p_R)*psimax*(total/K))*y["U"],  #trans29: capacity limitaition + background death
           
           #TRANSITIONS AFFECTING U_R:
-          psimax*(1-c_R)*(1-c_M)*y["U_R"],                                  #trans30: growth of U_R
-          eM_R*y["U_R"],                                                    #trans31: effect of AM on U_R
-          (d+(1-c_R)*(1-c_M)*(1-h_p*p_R*BM)*psimax*(total/K))*y["U_R"],     #trans32: capacity limitation + background death
+          psimax*(1-c_R)*(1-c_M)*y["U_R"],                   #trans30: growth of U_R
+          eM_R*y["U_R"],                                     #trans31: effect of AM on U_R
+          (d+(1-c_R)*(1-c_M)*psimax*(total/K))*y["U_R"],     #trans32: capacity limitation + background death
           #MUTATIONS:
           
           #"TO"
@@ -193,25 +186,15 @@ rate_function <- function(y, params, t){
           p_M*psimax*y["P"]*con_P,                #trans39: mutation P->U
           h_p*p_R*psimax*(1-c_M)*to_res*y["U"],   #trans40: mutation U->U_R
           
-          #"BACK"
-          BM*p_R*(1-c_R)*psimax*y["N_R"],         #trans41: backmutation N_R->N 
-          BM*p_P*psimax*y["P"],                   #trans42: backmutation P->N
-          BM*p_M*h_p*(1-c_M)*psimax*y["M"],       #trans43: backmutation M->N
-          BM*p_R*(1-c_R)*psimax*y["P_R"],         #trans44: backmutation P_R->P
-          BM*p_R*(1-c_R)*(1-c_M)*psimax*y["M_R"], #trans45: backmutation M_R->M
-          BM*p_M*h_p*(1-c_M)*psimax*y["U"],       #trans46: backmutation U->M
-          BM*p_P*h_p*(1-c_M)*psimax*y["U"],       #trans47: backmutation U->P
-          BM*p_R*h_p*psimax*(1-c_M-c_R)*y["U_R"], #trans48: backmutation U_R->U
-          
           #Resistant persister populations:
-          Rp*s_F*y["N_R"],                        #trans49: switching of N_R to N_R_p
-          Rp*s_B*y["N_R_p"],                      #trans50: switching of N_R_p to N_R
-          Rp*h_F*s_F*y["P_R"],                    #trans51: switching of P_R to P_R_p
-          Rp*h_B*s_B*y["P_R_p"],                  #trans52: switching of P_p to P_R_p
-          Rp*s_F*y["M_R"],                        #trans53: switching of Hm_r to M_R_p
-          Rp*s_B*y["M_R_p"],                      #trans54: switching of Hm_r_p to M_R
-          Rp*h_F*s_F*y["U_R"],                    #trans55: switching of U_R to U_R_p
-          Rp*h_B*s_B*y["U_R_p"]                   #trans56: switching of U_R_p to U_R
+          Rp*s_F*y["N_R"],                        #trans41: switching of N_R to N_R_p
+          Rp*s_B*y["N_R_p"],                      #trans42: switching of N_R_p to N_R
+          Rp*h_F*s_F*y["P_R"],                    #trans43: switching of P_R to P_R_p
+          Rp*h_B*s_B*y["P_R_p"],                  #trans44: switching of P_p to P_R_p
+          Rp*s_F*y["M_R"],                        #trans45: switching of Hm_r to M_R_p
+          Rp*s_B*y["M_R_p"],                      #trans46: switching of Hm_r_p to M_R
+          Rp*h_F*s_F*y["U_R"],                    #trans47: switching of U_R to U_R_p
+          Rp*h_B*s_B*y["U_R_p"]                   #trans48: switching of U_R_p to U_R
           
         ))
       })
