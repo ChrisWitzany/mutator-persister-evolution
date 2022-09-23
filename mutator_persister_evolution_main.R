@@ -15,7 +15,7 @@ require(KScorrect) #needed to generate uniform log distributions via the dlunif(
 #-------------------------------------------------
 
 run <- F #if true and you run the whole code the model will run and get saved
-name <- "test" #if you are running this whole thing you need a name for the data
+name <- "test" #if you are running this whole thing you need a name for the created data
 
 #for running via cluster:
 #args = commandArgs(trailingOnly=TRUE)
@@ -43,6 +43,9 @@ params <- c(#pharmacokinetics:
             d = 0.01,             #background death rate of growing cells
             B0 = 10**9,         #size of starting population (N0+P0)
             
+            #immunesystem:
+            beta = 0.1,  #clearance rate by the immunesyste (only for bacteriostatic ABs)
+            
             #mutation rates:
             p_R = 1*10**-6,       #mutation rate of susceptibles to resistant/hypermutators/highpersisters
             to_res = 1,         #resistance possible=1, resistance not possible=0
@@ -51,8 +54,7 @@ params <- c(#pharmacokinetics:
             p_P =  1*10**-5,   #mutation rate of susceptibles to highpersisters
             con_M = 1,         #for turning off M->U mutations
             con_P = 1,         #for turning off P->U mutations
-            BM = 0,             #1 = Backmutations possible, 0 = backmutations do not happen
-            
+
             #switching:
             s_F = 1*1.2*10**-6,  #switching rate of susceptibles into persisterstate
             s_B = 1*0.1,         #switching rate of persisterstate back to susceptible
@@ -63,8 +65,8 @@ params <- c(#pharmacokinetics:
             #A_max range parameters and number of simulations
             min_con = 0,        #lowest concentration of AM
             max_con = 50,       #highest concentration of AM
-            increase_by = 1,  #stepsize from min to max con
-            sim_per_con = 10  #number of simulations per step
+            increase_by = 0.1,  #stepsize from min to max con
+            sim_per_con = 100  #number of simulations per step
             )
 
 
@@ -106,9 +108,9 @@ calculate_y <- function(params){
 
 y <- calculate_y(params)
 
-#-------------------------------------------------
-#transitions:
-#-------------------------------------------------
+#--------------------------------------------------------------
+## transitions and rate function for bactericidal AB treatment 
+#--------------------------------------------------------------
 
 transitions = list( #TRANSITIONS AFFECTING N/P:
                     c(N = +1),           #trans1: growth of N
@@ -169,33 +171,20 @@ transitions = list( #TRANSITIONS AFFECTING N/P:
                     c(U = +1, M = -1, track_M_U = +1), #trans38: mutation M->U
                     c(U = +1, P = -1, track_P_U = +1), #trans39: mutation P->U
                     c(U_R = +1, U = -1),               #trans40: backmutation U_R->U
-                    #"BACK"
-                    c(N_R = -as.integer(params["BM"]), N = +as.integer(params["BM"])), #trans41: backmutation N_R->N 
-                    c(P = -as.integer(params["BM"]), N = +as.integer(params["BM"])),   #trans42: backmutation P->N
-                    c(M = -as.integer(params["BM"]), N = +as.integer(params["BM"])),   #trans43: backmutation M->N
-                    c(P_R = -as.integer(params["BM"]), P = +as.integer(params["BM"])), #trans44: backmutation P_R->P
-                    c(M_R = -as.integer(params["BM"]), M = +as.integer(params["BM"])), #trans45: backmutation M_R->M
-                    c(U = -as.integer(params["BM"]), M = +as.integer(params["BM"])),   #trans46: backmutation U->M
-                    c(U = -as.integer(params["BM"]), P = +as.integer(params["BM"])),   #trans47: backmutation U->P
-                    c(U_R = -as.integer(params["BM"]),U = +as.integer(params["BM"])),  #trans48: backmutation U_R->U
-                    
+
                     #Resistant persister populations
-                    c(N_R = -as.integer(params["Rp"]), N_R_p = +as.integer(params["Rp"])), #trans49: switching of N_R to N_R_p
-                    c(N_R = +as.integer(params["Rp"]), N_R_p = -as.integer(params["Rp"])), #trans50: switching of N_R_p to N_R
-                    c(P_R = -as.integer(params["Rp"]), P_R_p = +as.integer(params["Rp"])), #trans51: switching of P_R to P_R_p
-                    c(P_R = +as.integer(params["Rp"]), P_R_p = -as.integer(params["Rp"])), #trans52: switching of P_p to P_R_p
-                    c(M_R = -as.integer(params["Rp"]), M_R_p = +as.integer(params["Rp"])), #trans53: switching of Hm_r to M_R_p
-                    c(M_R = +as.integer(params["Rp"]), M_R_p = -as.integer(params["Rp"])), #trans54: switching of Hm_r_p to M_R
-                    c(U_R = -as.integer(params["Rp"]), U_R_p = +as.integer(params["Rp"])), #trans55: switching of U_R to U_R_p
-                    c(U_R = +as.integer(params["Rp"]), U_R_p = -as.integer(params["Rp"]))  #trans56: switching of U_R_p to U_R
+                    c(N_R = -as.integer(params["Rp"]), N_R_p = +as.integer(params["Rp"])), #trans41: switching of N_R to N_R_p
+                    c(N_R = +as.integer(params["Rp"]), N_R_p = -as.integer(params["Rp"])), #trans42: switching of N_R_p to N_R
+                    c(P_R = -as.integer(params["Rp"]), P_R_p = +as.integer(params["Rp"])), #trans43: switching of P_R to P_R_p
+                    c(P_R = +as.integer(params["Rp"]), P_R_p = -as.integer(params["Rp"])), #trans44: switching of P_p to P_R_p
+                    c(M_R = -as.integer(params["Rp"]), M_R_p = +as.integer(params["Rp"])), #trans45: switching of Hm_r to M_R_p
+                    c(M_R = +as.integer(params["Rp"]), M_R_p = -as.integer(params["Rp"])), #trans46: switching of Hm_r_p to M_R
+                    c(U_R = -as.integer(params["Rp"]), U_R_p = +as.integer(params["Rp"])), #trans47: switching of U_R to U_R_p
+                    c(U_R = +as.integer(params["Rp"]), U_R_p = -as.integer(params["Rp"]))  #trans48: switching of U_R_p to U_R
                   
                     )
 
-#-------------------------------------------------------
-#function which calculates the rates of each transition
-#-------------------------------------------------------
 
-#constant switching / spontaneous switching
 rate_function <- function(y, params, t){
   
     with(as.list(c(params)),{
@@ -223,43 +212,43 @@ rate_function <- function(y, params, t){
         #TRANSITIONS AFFECTING N_R:
         psimax*(1-c_R)*y["N_R"],                          #trans6: growth of N_R
         eR*y["N_R"],                                      #trans7: effect of antimicrobials on N_R
-        (d+(1-c_R)*(1-p_R*BM)*psimax*(total/K))*y["N_R"], #trans8: capactiy limitation + background death
+        (d+(1-c_R)*psimax*(total/K))*y["N_R"], #trans8: capactiy limitation + background death
         
         #TRANSITIONS AFFECTING P/P_p:
         psimax*y["P"],                                    #trans9: growth of P
         h_F*s_F*y["P"],                                   #trans10: switching from P to P_p
         h_B*s_B*y["P_p"],                                 #trans11: switching from P_p to P
         eN*y["P"],                                        #trans12: effect of antimicrobials on P
-        (d+psimax*(1-p_R-p_M-p_P*BM)*(total/K))*y["P"],   #trans13: capacity limitation + background death
+        (d+psimax*(1-p_R-p_M)*(total/K))*y["P"],   #trans13: capacity limitation + background death
         
         #TRANSITIONS AFFECTING P_R:
         psimax*(1-c_R)*y["P_R"],                          #trans14: growth of P_R
         eR*y["P_R"],                                      #trans15: effect of antimicrobials on P_R
-        (d+(1-c_R)*(1-p_R*BM)*psimax*(total/K))*y["P_R"], #trans16: capacity limitation + background death
+        (d+(1-c_R)*psimax*(total/K))*y["P_R"], #trans16: capacity limitation + background death
         
         #TRANSITIONS AFFECTING M/M_p:
         psimax*(1-c_M)*y["M"],                                            #trans17: growth of M
         s_F*y["M"],                                                       #trans18: switching from M to M_p
         s_B*y["M_p"],                                                     #trans19: switching from M_p to M
         eM*y["M"],                                                        #trans20: effect of antimicrobials on M
-        (d+(1-c_M)*(1-h_p*(p_R+p_P)-h_p*p_M*BM)*psimax*(total/K))*y["M"], #trans21: capacity limit + background death
+        (d+(1-c_M)*(1-h_p*(p_R+p_P))*psimax*(total/K))*y["M"], #trans21: capacity limit + background death
         
         #TRANSITIONS AFFECTING M_R:
         psimax*(1-c_R)*(1-c_M)*y["M_R"],                                  #trans22: growth of M_R
         eM_R*y["M_R"],                                                    #trans23: effect of antimicrobials on M_R
-        (d+(1-c_R)*(1-c_M)*(1-h_p*p_R*BM)*psimax*(total/K))*y["M_R"],     #trans24: capacity limitaiton + background death
+        (d+(1-c_R)*(1-c_M)*psimax*(total/K))*y["M_R"],     #trans24: capacity limitaiton + background death
         
         #TRANSITIONS AFFECTING U/U_p:
         psimax*(1-c_M)*y["U"],                                            #trans25: growth of U
         h_F*s_F*y["U"],                                                   #trans26: switching from U to U_p
         h_B*s_B*y["U_p"],                                                 #trans27: switching from U_p to U
         eM*y["U"],                                                        #trans28: effect of AM on U
-        (d+(1-c_M)*(1-h_p*(p_R-(p_M+p_P)*BM))*psimax*(total/K))*y["U"],   #trans29: capacity limitaition + background death
+        (d+(1-c_M)*(1-h_p*p_R)*psimax*(total/K))*y["U"],   #trans29: capacity limitaition + background death
         
         #TRANSITIONS AFFECTING U_R:
         psimax*(1-c_R)*(1-c_M)*y["U_R"],                                  #trans30: growth of U_R
         eM_R*y["U_R"],                                                    #trans31: effect of AM on U_R
-        (d+(1-c_R)*(1-c_M)*(1-h_p*p_R*BM)*psimax*(total/K))*y["U_R"],     #trans32: capacity limitation + background death
+        (d+(1-c_R)*(1-c_M)*psimax*(total/K))*y["U_R"],     #trans32: capacity limitation + background death
         #MUTATIONS:
         
         #"TO"
@@ -271,32 +260,187 @@ rate_function <- function(y, params, t){
         h_p*p_P*psimax*(1-c_M)*y["M"]*con_M,    #trans38: mutation M->U
         p_M*psimax*y["P"]*con_P,                #trans39: mutation P->U
         h_p*p_R*psimax*(1-c_M)*to_res*y["U"],   #trans40: mutation U->U_R
-        
-        #"BACK"
-        BM*p_R*(1-c_R)*psimax*y["N_R"],         #trans41: backmutation N_R->N 
-        BM*p_P*psimax*y["P"],                   #trans42: backmutation P->N
-        BM*p_M*h_p*(1-c_M)*psimax*y["M"],       #trans43: backmutation M->N
-        BM*p_R*(1-c_R)*psimax*y["P_R"],         #trans44: backmutation P_R->P
-        BM*p_R*(1-c_R)*(1-c_M)*psimax*y["M_R"], #trans45: backmutation M_R->M
-        BM*p_M*h_p*(1-c_M)*psimax*y["U"],       #trans46: backmutation U->M
-        BM*p_P*h_p*(1-c_M)*psimax*y["U"],       #trans47: backmutation U->P
-        BM*p_R*h_p*psimax*(1-c_M-c_R)*y["U_R"], #trans48: backmutation U_R->U
-        
+
         #Resistant persister populations:
-        Rp*s_F*y["N_R"],                        #trans49: switching of N_R to N_R_p
-        Rp*s_B*y["N_R_p"],                      #trans50: switching of N_R_p to N_R
-        Rp*h_F*s_F*y["P_R"],                    #trans51: switching of P_R to P_R_p
-        Rp*h_B*s_B*y["P_R_p"],                  #trans52: switching of P_p to P_R_p
-        Rp*s_F*y["M_R"],                        #trans53: switching of Hm_r to M_R_p
-        Rp*s_B*y["M_R_p"],                      #trans54: switching of Hm_r_p to M_R
-        Rp*h_F*s_F*y["U_R"],                    #trans55: switching of U_R to U_R_p
-        Rp*h_B*s_B*y["U_R_p"]                   #trans56: switching of U_R_p to U_R
+        Rp*s_F*y["N_R"],                        #trans41: switching of N_R to N_R_p
+        Rp*s_B*y["N_R_p"],                      #trans42: switching of N_R_p to N_R
+        Rp*h_F*s_F*y["P_R"],                    #trans43: switching of P_R to P_R_p
+        Rp*h_B*s_B*y["P_R_p"],                  #trans44: switching of P_p to P_R_p
+        Rp*s_F*y["M_R"],                        #trans45: switching of Hm_r to M_R_p
+        Rp*s_B*y["M_R_p"],                      #trans46: switching of Hm_r_p to M_R
+        Rp*h_F*s_F*y["U_R"],                    #trans47: switching of U_R to U_R_p
+        Rp*h_B*s_B*y["U_R_p"]                   #trans48: switching of U_R_p to U_R
         
       ))
     })
 }
 
+#---------------------------------------------------------------
+# transitions and rate function for bacteriostatic AB treatment 
+#---------------------------------------------------------------
 
+transitions_bacteriostatic = list( 
+  #TRANSITIONS AFFECTING N/P:
+  c(N = +1),           #trans1: growth of N (includes AB effect)
+  c(N = -1, N_p = +1), #trans2: switching from N to P
+  c(N = +1, N_p = -1), #trans3: switching from N_p to N 
+  c(N = -1),           #trans4: clearance of N by the immune system
+  c(N = -1),           #trans5: capacity limitation
+  
+  #TRANSITIONS AFFECTING N_R:
+  c(N_R = +1),         #trans6: growth of N_R (includes AB effect)
+  c(N_R = -1),         #trans7: clearance of N_R by the immune system
+  c(N_R = -1),         #trans8: capacity limitation
+  
+  #TRANSITIONS AFFECTING P/P_p:
+  c(P = +1),           #trans9: growth of P (includes AB effect)
+  c(P = -1, P_p = +1), #trans10: switching from P to P_p
+  c(P = +1, P_p = -1), #trans11: switching from P_p to P
+  c(P = -1),           #trans12: clearance of P/P_p by the immune system
+  c(P = -1),           #trans13: capacity limitation
+  
+  #TRANSITIONS AFFECTING P_R:
+  c(P_R = +1),         #trans14: growth of P_R (includes AB effect)
+  c(P_R = -1),         #trans15: clearance of P_R by the immune system
+  c(P_R = -1),         #trans16: capacity limitation
+  
+  
+  #TRANSITIONS AFFECTING M/M_p:
+  c(M = +1),           #trans17: growth of M (includes AB effect)
+  c(M = -1, M_p = +1), #trans18: switching from M to M_p
+  c(M = +1, M_p = -1), #trans19: switching from M_p to M
+  c(M = -1),           #trans20: clearance of M by the immune system
+  c(M = -1),           #trans21: capacity limitation
+  
+  #TRANSITIONS AFFECTING M_R:
+  c(M_R = +1),         #trans22: growth of M_R (includes AB effect)
+  c(M_R = -1),         #trans23: clearance of M_R by the immune system
+  c(M_R = -1),         #trans24: capacity limitation
+  
+  #TRANSITIONS AFFECTING U/U_p:
+  c(U = +1),           #trans25: growth of U (includes AB effect)
+  c(U = -1, U_p = +1), #trans26: switching from U to U_p
+  c(U = +1, U_p = -1), #trans27: switching from U_p to U
+  c(U = -1),           #trans28: clearance of U by the immune system
+  c(U = -1),           #trans29: capacity limitation
+  
+  #TRANSITIONS AFFECTING U_R:
+  c(U_R = +1),         #trans30: growth of U_R (includes AB effect)
+  c(U_R = -1),         #trans31: clearance of U_R by the immune system
+  c(U_R = -1),         #trans32: capacity limitation
+  
+  #MUTATIONS:
+  #"TO"
+  c(N_R = +1, N = -1),               #trans33: mutation N->N_R 
+  c(P = +1, N = -1),                 #trans34: mutation N->P
+  c(M = +1, N = -1),                 #trans35: mutation N->M
+  c(P_R = +1, P = -1),               #trans36: mutation P->P_R
+  c(M_R = +1, M = -1),               #trans37: mutation M->M_R
+  c(U = +1, M = -1, track_M_U = +1), #trans38: mutation M->U
+  c(U = +1, P = -1, track_P_U = +1), #trans39: mutation P->U
+  c(U_R = +1, U = -1),               #trans40: backmutation U_R->U
+  
+  #Resistant persister populations
+  c(N_R = -as.integer(params["Rp"]), N_R_p = +as.integer(params["Rp"])), #trans41: switching of N_R to N_R_p
+  c(N_R = +as.integer(params["Rp"]), N_R_p = -as.integer(params["Rp"])), #trans42: switching of N_R_p to N_R
+  c(P_R = -as.integer(params["Rp"]), P_R_p = +as.integer(params["Rp"])), #trans43: switching of P_R to P_R_p
+  c(P_R = +as.integer(params["Rp"]), P_R_p = -as.integer(params["Rp"])), #trans44: switching of P_p to P_R_p
+  c(M_R = -as.integer(params["Rp"]), M_R_p = +as.integer(params["Rp"])), #trans45: switching of Hm_r to M_R_p
+  c(M_R = +as.integer(params["Rp"]), M_R_p = -as.integer(params["Rp"])), #trans46: switching of Hm_r_p to M_R
+  c(U_R = -as.integer(params["Rp"]), U_R_p = +as.integer(params["Rp"])), #trans47: switching of U_R to U_R_p
+  c(U_R = +as.integer(params["Rp"]), U_R_p = -as.integer(params["Rp"]))  #trans48: switching of U_R_p to U_R
+  
+)
+
+
+rate_function_bacteriostatic <- function(y, params, t){
+
+  with(as.list(c(params)),{
+    
+    A = A_max*exp(-k*(t-((t %/% tau)*tau))) #pharmakokinetics
+    
+    eN = ((psimax-d-psimin)*((A/MIC)^kappa))/((A/MIC)^kappa-(psimin/(psimax-d))) #effect of antimicrobial for N
+    eR = ((psimax*(1-c_R)-d-psimin)*((A/(MIC*10))^kappa))/((A/(MIC*10))^kappa-(psimin/(psimax*(1-c_R)-d)))
+    #note that eP and eP_R are identical to eN and eR and thus not explicitly needed
+    
+    eM = ((psimax*(1-c_M)-d-psimin)*((A/MIC)^kappa))/((A/MIC)^kappa-(psimin/psimax*(1-c_M))) #effect of antimicrobial for M
+    eM_R = ((psimax*(1-c_M)*(1-c_R)-d-psimin)*((A/(10*MIC))^kappa))/((A/(10*MIC))^kappa-(psimin/(psimax*(1-c_M)*(1-c_R)-d))) #effect of antimicrobial for N_R, 10times as resistant, see MIC
+    #note that eU and eU_R are identical to eM and eM_R 
+    
+    total = sum(y[1:12])
+    
+    return(c(
+      #TRANSITIONS AFFECTING N/N_p:
+      (psimax-eN)*y["N"],                                #trans1: growth of N with bacteriostatic AB effect
+      s_F*y["N"],                                        #trans2: switching from N to P
+      s_B*y["N_p"],                                      #trans3: switching from N_p to N
+      beta*y["N"],                                       #trans4: clearance of N by the immune system
+      (d+(1-p_R-p_M-p_P)*(psimax-eN)*(total/K))*y["N"],  #trans5: capacity limitation + background death
+      
+      #TRANSITIONS AFFECTING N_R:
+      (psimax*(1-c_R)-eR)*y["N_R"],                          #trans6: growth of N_R with bacteriostatic AB effect
+      beta*y["N_R"],                                         #trans7: clearance of N_R by the immune system
+      (d+((1-c_R)*psimax-eR)*(total/K))*y["N_R"], #trans8: capactiy limitation + background death
+      
+      #TRANSITIONS AFFECTING P/P_p:
+      (psimax-eN)*y["P"],                                    #trans9: growth of P with bacteriostatic AB effect
+      h_F*s_F*y["P"],                                        #trans10: switching from P to P_p
+      h_B*s_B*y["P_p"],                                      #trans11: switching from P_p to P
+      beta*y["P"],                                           #trans12: clearance of P by the immune system
+      (d+(psimax-eN)*(1-p_R-p_M)*(total/K))*y["P"],   #trans13: capacity limitation + background death
+      
+      #TRANSITIONS AFFECTING P_R:
+      (psimax*(1-c_R)-eR)*y["P_R"],                          #trans14: growth of P_R with bacteriostatic AB effect
+      beta*y["P_R"],                                           #trans15: clearance of P_R by the immune system
+      (d+(psimax*(1-c_R)-eR)*(total/K))*y["P_R"], #trans16: capacity limitation + background death
+      
+      #TRANSITIONS AFFECTING M/M_p:
+      (psimax*(1-c_M)-eM)*y["M"],                                            #trans17: growth of M with bacteriostatic AB effect
+      s_F*y["M"],                                                            #trans18: switching from M to M_p
+      s_B*y["M_p"],                                                          #trans19: switching from M_p to M
+      beta*y["M"],                                                           #trans20: clearance of M by the immune system
+      (d+(1-h_p*(p_R+p_P))*((1-c_M)*psimax-eM)*(total/K))*y["M"], #trans21: capacity limit + background death
+      
+      #TRANSITIONS AFFECTING M_R:
+      (psimax*(1-c_R)*(1-c_M)-eM_R)*y["M_R"],                                #trans22: growth of M_R
+      beta*y["M_R"],                                                           #trans23: effect of antimicrobials on M_R
+      (d+((1-c_R)*(1-c_M)*psimax-eM_R)*(total/K))*y["M_R"],   #trans24: capacity limitaiton + background death
+      
+      #TRANSITIONS AFFECTING U/U_p:
+      (psimax*(1-c_M)-eM)*y["U"],                                            #trans25: growth of U with bacteriostatic AB effect
+      h_F*s_F*y["U"],                                                        #trans26: switching from U to U_p
+      h_B*s_B*y["U_p"],                                                      #trans27: switching from U_p to U
+      beta*y["U"],                                                           #trans28: clearance of U by the immune system
+      (d+(1-h_p*p_R)*(psimax*(1-c_M)-eM)*(total/K))*y["U"],   #trans29: capacity limitaition + background death
+      
+      #TRANSITIONS AFFECTING U_R:
+      (psimax*(1-c_R)*(1-c_M)-eM_R)*y["U_R"],                                #trans30: growth of U_R 
+      beta*y["U_R"],                                                         #trans31: clearance of U_R by the immune system
+      (d+((1-c_R)*(1-c_M)*psimax-eM_R)*(total/K))*y["U_R"],   #trans32: capacity limitation + background death
+      
+      #MUTATIONS:
+      to_res*p_R*(psimax-eN)*y["N"],               #trans33: mutation N->N_R 
+      p_P*(psimax-eN)*y["N"],                      #trans34: mutation N->P
+      p_M*(psimax-eN)*y["N"],                      #trans35: mutation N->M
+      p_R*(psimax-eN)*to_res*y["P"],               #trans36: mutation P->P_R
+      h_p*p_R*(psimax*(1-c_M)-eM)*to_res*y["M"],   #trans37: mutation M->M_R
+      h_p*p_P*(psimax*(1-c_M)-eM)*y["M"]*con_M,    #trans38: mutation M->U
+      p_M*(psimax-eN)*y["P"]*con_P,                #trans39: mutation P->U
+      h_p*p_R*(psimax*(1-c_M)-eM)*to_res*y["U"],   #trans40: mutation U->U_R
+      
+      #Resistant persister populations:
+      Rp*s_F*y["N_R"],                        #trans41: switching of N_R to N_R_p
+      Rp*s_B*y["N_R_p"],                      #trans42: switching of N_R_p to N_R
+      Rp*h_F*s_F*y["P_R"],                    #trans43: switching of P_R to P_R_p
+      Rp*h_B*s_B*y["P_R_p"],                  #trans44: switching of P_p to P_R_p
+      Rp*s_F*y["M_R"],                        #trans45: switching of Hm_r to M_R_p
+      Rp*s_B*y["M_R_p"],                      #trans46: switching of Hm_r_p to M_R
+      Rp*h_F*s_F*y["U_R"],                    #trans47: switching of U_R to U_R_p
+      Rp*h_B*s_B*y["U_R_p"]                   #trans48: switching of U_R_p to U_R
+      
+    ))
+  })
+}
 
 #-------------------------------------------------
 # meta colors values for the distinct populations
@@ -331,10 +475,12 @@ color_U_R_p<- "purple3"       # "#7D26CD"
 #short function to run and plot one model as a oneliner
 #-------------------------------------------------
 
-plot_single_simulation <- function(timeframe = c(0, params["t_max"]), show_total = FALSE, fun = rate_function, legend = FALSE){
+#NOTE: default rate function and transitions are for bactericidal AB treatment
+plot_single_simulation <- function(timeframe = c(0, params["t_max"]), show_total = FALSE, trans = transitions, rate_fun = rate_function, legend = FALSE){
+  
   sim_results <- data.frame(ssa.adaptivetau(init.values = y, 
-                                            transitions = transitions, 
-                                            rateFunc = fun,
+                                            transitions = trans, 
+                                            rateFunc = rate_fun,
                                             params = params,
                                             tf = as.integer(params["t_max"]),
                                             tl.params = list(epsilon = 0.005)))
@@ -357,59 +503,13 @@ plot_single_simulation <- function(timeframe = c(0, params["t_max"]), show_total
 }
 
 
-#---------------------------------------------------------------------------
-#---------------------------------------------------------------------------
-#this is never used and I might as well remove it @some point:
-
 #-------------------------------------------------
-#plot single contributions
+# conc_kill_curve function: 
 #-------------------------------------------------
 
-plot_contributions <- function(timeframe = c(0,params["t_max"]), fun = rate_function, cummulative=FALSE){
-  
-  sim_results <- data.frame(ssa.adaptivetau(init.values = y, 
-                                            transitions = transitions, 
-                                            rateFunc = fun,
-                                            params = params,
-                                            tf = as.integer(params["t_max"]),
-                                            tl.params = list(epsilon = 0.005)))
-  
-  if(cummulative==TRUE){
-    
-    plot(log10(sim_results$track_M_U+1)~sim_results$time, 
-         type = "l", col = color_M, 
-         xlab = "Time (h)",
-         ylab = "Contribution to U (log10)",
-         ylim = c(0,max(log10(sim_results$track_M_U+1),log10(sim_results$track_P_U+1))))
-    points(log10(sim_results$track_P_U+1)~sim_results$time, type ="l", col = color_P)
-    legend("topright", inset=c(0.01,0.02), legend=c("M","P"),
-           col = c(color_M, color_P), lty=c(1,1))
-    
-    
-  }else{
-    
-    #getting rid of the cummulative counting using the diff function:
-    plot(log10(diff(sim_results$track_M_U)+1)~head(sim_results$time, -1), 
-         type = "l", col = color_M, 
-         xlab = "Time (h)",
-         ylab = "Contribution to U (log10)",
-         ylim = c(0,max(log10(diff(sim_results$track_M_U)+1),log10(diff(sim_results$track_P_U)+1))))
-    points(log10(diff(sim_results$track_P_U)+1)~head(sim_results$time, -1), type ="l", col = color_P)
-    legend("topright", inset=c(0.01,0.02), legend=c("M","P"),
-           col = c(color_M, color_P), lty=c(1,1))
-    
-  }
-
-}
-
-
-
-#-------------------------------------------------
-#writing a conc_kill_curve function: 
-#-------------------------------------------------
-
+#NOTE: default rate function and transitions are for bactericidal AB treatment
 conc_kill_curve <- function(min_con = params["min_con"], max_con = params["max_con"], increase_by = params["increase_by"], 
-                       sim_per_con = params["sim_per_con"], rate_fun = rate_function, y = calculate_y(params), 
+                       sim_per_con = params["sim_per_con"], trans = transitions, rate_fun = rate_function, y = calculate_y(params), 
                        saving, save_every_run = FALSE){
   
   n_increase <- (max_con - min_con) / increase_by #how many increases must happen e.g. number of outer loop runs
@@ -421,7 +521,7 @@ conc_kill_curve <- function(min_con = params["min_con"], max_con = params["max_c
     for(i in 1:sim_per_con){
       
       df_results <- data.frame(ssa.adaptivetau(init.values = y, 
-                                               transitions = transitions,
+                                               transitions = trans,
                                                rateFunc = rate_fun,
                                                params = params,
                                                tf = as.integer(params["t_max"]),
@@ -497,7 +597,7 @@ conc_kill_curve <- function(min_con = params["min_con"], max_con = params["max_c
 #sensitivity analysis
 #-------------------------------------------------
 
-sensitivity_analysis <- function(runs, name){
+sensitivity_analysis <- function(runs, name, trans = transitions, rate_fun = rate_function){
   
   params_space <- matrix( c( A_max_min = 10, A_max_max = 35, A_max_dist = "unif",
                              s_F_min = 10**-9, s_F_max = 1, s_F_dist = "log", 
@@ -512,7 +612,7 @@ sensitivity_analysis <- function(runs, name){
   lhs_params <- matrix(nrow = nrow(lhs), ncol = ncol(lhs))   #each row will consist of one sample of the parameter space.
   colnames(lhs_params) <- c("A_max", "s_F","s_B","p_R") #easier indexing
   
-  #transform lhs lhs via params_space to actual parameter values
+  #transform lhs via params_space to actual parameter values
   for (i in 1:nrow(params_space)){
     if(params_space[i,3]=="unif"){
       lhs_params[,i] <- qunif(lhs[,i], 
@@ -539,12 +639,11 @@ sensitivity_analysis <- function(runs, name){
     
     #adapt y to the random parameters, i.e. avoid N/N_p ratio to be not realistic for the respective switching rates
     y <- calculate_y(params = params)
-    print(y)
     
     #run the simulation with this set of parameters (and y)
     df_results <- data.frame(ssa.adaptivetau(init.values = y, 
-                                             transitions = transitions,
-                                             rateFunc = rate_function,
+                                             transitions = trans,
+                                             rateFunc = rate_fun,
                                              params = params,
                                              tf = as.integer(params["t_max"]),
                                              tl.params = list(epsilon = 0.005)))
@@ -570,7 +669,7 @@ sensitivity_analysis <- function(runs, name){
       save_df[nrow(save_df) + 1 , ] = cbind(last_line,data.frame(as.list(params))) #add data to new row of save_df
     }
     
-    #probably need to change this progress report printing function to something more sporadic:
+    #progress report:
     print(paste0(i*100/runs,"% of runs done"))
     
   }
@@ -597,6 +696,7 @@ sensitivity_analysis <- function(runs, name){
 #run simulation by hand / opposed to function:
 #-------------------------------------------------
 
+# #bactericidal:
 # sim_results = ssa.adaptivetau(init.values = y,
 #                               transitions = transitions,
 #                               rateFunc = rate_function,
@@ -604,16 +704,29 @@ sensitivity_analysis <- function(runs, name){
 #                               tf = as.integer(params["t_max"]),
 #                               tl.params = list(epsilon = 0.005))
 
-#-------------------------------------------------
-# code and functionality overview 
-#-------------------------------------------------
+# #bacteriostatic:
+# params["psimin"] = -0.01
+# sim_results = ssa.adaptivetau(init.values = y,
+#                               transitions = transitions_bacteriostatic,
+#                               rateFunc = rate_function_bacteriostatic,
+#                               params = params,
+#                               tf = as.integer(params["t_max"]),
+#                               tl.params = list(epsilon = 0.005))
 
-#single simulation for parms
+#---------------------------------------------------
+# functionality check and running main simulations
+#---------------------------------------------------
+
+#NOTE: default rate function and transitions are for bactericidal AB treatment
+
+#bactericidal:
+#single simulation for params
 plot_single_simulation()
-
 #A_max variation
 if(run == TRUE){run <- conc_kill_curve(saving = name)}
 
-
-
-
+# #bacteriostatic:
+# params["psimin"] = -0.01 #set maximal killing close to zero for bacteriostatic simulations!
+# plot_single_simulation(trans = transitions_bacteriostatic, rate_fun = rate_function_bacteriostatic)
+# #A_max variation
+# if(run == TRUE){run <- conc_kill_curve(saving = name, trans = transitions_bacteriostatic, rate_fun = rate_function_bacteriostatic)}
